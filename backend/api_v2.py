@@ -108,6 +108,9 @@ class TUMChatbotAPIV2:
     def _setup_routes(self):
         """Setup API routes"""
         
+        # /api/health is the path people and uptime checks try first, so it is
+        # served here too. Both map to the endpoint name the IP middleware skips.
+        @self.app.route('/api/health', methods=['GET'])
         @self.app.route('/api/v2/health', methods=['GET'])
         def health_check():
             """Health check endpoint"""

@@ -79,7 +79,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-15 tests covering the context rules and the retrieval scoring. None of them call the network. They do not test the answers Gemini writes, only the logic around them, and one test checks the point where the rules give up and hand the question to the model.
+32 tests covering the context rules, the retrieval scoring, the response formatting and the flow through `generate_response`. None of them call the network. Gemini is stubbed, so what is tested is the routing around the model call and not the text it writes. That includes the point where the rules give up and hand the question over, the question being held while the user is asked for a campus, and the answer coming back once they reply.
 
 ## TUM's material
 

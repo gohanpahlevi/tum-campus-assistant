@@ -22,6 +22,197 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+# Query expansion. A word in a question also matches the terms listed for it,
+# so "hungry" reaches entries about the mensa. Module level because it never
+# changes and rebuilding it per query cost about 0.8 ms of pure allocation.
+KEYWORD_EXPANSIONS = {
+        # Campus and location
+        'library': ['lib', 'liv', 'books', 'study', 'reading', 'research', 'digital resources', 'bibliothek'],
+        'liv': ['library', 'lib', 'books', 'study', 'reading', 'research'],
+        'location': ['where', 'building', 'address', 'find', 'get to', 'go to', 'room', 'directions', 'navigate'],
+        'heilbronn': ['bildungscampus', 'campus', 'chn', 'student handbook', 'bildungscampus heilbronn'],
+        'munich': ['münchen', 'main campus', 'city campus', 'downtown', 'zentrum', 'munich campus'],
+        'garching': ['garching campus', 'research campus', 'forschungszentrum', 'garching-forschungszentrum'],
+        'weihenstephan': ['weihenstephan campus', 'freising', 'freising-weihenstephan', 'life sciences'],
+        'singapore': ['asia', 'international', 'tum asia', 'singapore campus'],
+        'building': ['edifice', 'structure', 'facility', 'complex', 'hall', 'tower', 'block'],
+        'room': ['office', 'classroom', 'lab', 'laboratory', 'space', 'venue', 'hall', 'auditorium'],
+        
+        # Dining and food
+        'lunch': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'restaurant', 'cafe'],
+        'dinner': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'restaurant', 'evening meal'],
+        'breakfast': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'morning meal'],
+        'meal': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'lunch', 'dinner', 'breakfast'],
+        'mensa': ['cafeteria', 'canteen', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal', 'dining'],
+        'cafeteria': ['mensa', 'canteen', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal'],
+        'canteen': ['mensa', 'cafeteria', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal'],
+        'restaurant': ['mensa', 'cafeteria', 'canteen', 'dining', 'food', 'eat', 'meal'],
+        'cafe': ['coffee', 'snack', 'beverage', 'drink', 'light meal', 'cafeteria'],
+        'dining': ['mensa', 'cafeteria', 'canteen', 'eat', 'food', 'lunch', 'meal', 'restaurant'],
+        'hungry': ['mensa', 'cafeteria', 'canteen', 'food', 'dining', 'eat', 'lunch', 'breakfast', 'dinner'],
+        'eat': ['mensa', 'cafeteria', 'canteen', 'food', 'dining', 'hungry', 'meal', 'lunch'],
+        'food': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'hungry', 'meal', 'vegetarian', 'vegan', 'dietary', 'allergy'],
+        'snack': ['food', 'eat', 'vending', 'quick', 'meal', 'light food', 'bite'],
+        'vegetarian': ['vegan', 'dietary', 'plant-based', 'meat-free', 'special diet'],
+        'vegan': ['vegetarian', 'dietary', 'plant-based', 'dairy-free', 'special diet'],
+        
+        # Technology and IT
+        'laptop': ['computer', 'equipment', 'borrow', 'device', 'hardware', 'notebook', 'pc'],
+        'computer': ['laptop', 'desktop', 'pc', 'workstation', 'device', 'hardware', 'machine'],
+        'print': ['printing', 'printer', 'copy', 'scan', 'document', 'paper', 'multifunction'],
+        'printing': ['print', 'printer', 'copy', 'scanner', 'document', 'paper', 'multifunction'],
+        'software': ['application', 'program', 'app', 'install', 'license', 'download', 'tool'],
+        'app': ['application', 'software', 'program', 'tool', 'mobile app'],
+        'install': ['installation', 'setup', 'configure', 'download', 'deploy'],
+        'support': ['help', 'assistance', 'troubleshoot', 'fix', 'problem', 'issue', 'help desk'],
+        'help': ['support', 'assistance', 'troubleshoot', 'fix', 'problem', 'issue', 'guidance'],
+        'login': ['log-in', 'sign-in', 'access', 'password', 'credentials', 'authentication', 'signin'],
+        'password': ['login', 'credentials', 'authentication', 'access', 'security', 'passphrase'],
+        'account': ['profile', 'user', 'credentials', 'login', 'access', 'registration'],
+        'card': ['tumcard', 'student card', 'id', 'access', 'campuscard', 'student id', 'identification'],
+        'tumcard': ['card', 'student card', 'id', 'access', 'identification', 'campus card'],
+        'email': ['mail', 'e-mail', 'setup', 'configuration', 'mytum', 'exchange', 'electronic mail'],
+        'mail': ['email', 'e-mail', 'electronic mail', 'messaging', 'correspondence'],
+        'wifi': ['eduroam', 'internet', 'network', 'connection', 'wireless', 'wlan', 'setup', 'cat', 'wizard'],
+        'eduroam': ['wifi', 'wireless', 'internet', 'network', 'wlan', 'connection'],
+        'internet': ['wifi', 'network', 'connection', 'online', 'web', 'connectivity'],
+        'network': ['wifi', 'internet', 'connection', 'eduroam', 'lan', 'connectivity'],
+        'tumonline': ['system', 'portal', 'online', 'registration', 'enrollment', 'student portal'],
+        'moodle': ['lms', 'learning', 'course', 'platform', 'learning management system'],
+        'vpn': ['remote access', 'secure connection', 'network', 'lrz', 'virtual private network'],
+        
+        # Academic
+        'course': ['class', 'lecture', 'seminar', 'tutorial', 'subject', 'module', 'program'],
+        'class': ['course', 'lecture', 'seminar', 'tutorial', 'lesson', 'session'],
+        'lecture': ['class', 'course', 'seminar', 'presentation', 'talk', 'session'],
+        'seminar': ['course', 'class', 'workshop', 'tutorial', 'discussion'],
+        'exam': ['test', 'assessment', 'quiz', 'evaluation', 'examination', 'final'],
+        'test': ['exam', 'assessment', 'quiz', 'evaluation', 'examination'],
+        'grade': ['mark', 'score', 'result', 'transcript', 'certificate', 'evaluation'],
+        'transcript': ['grade', 'record', 'certificate', 'academic record', 'marks'],
+        'enroll': ['register', 'matriculate', 'admission', 'application', 'apply', 'signup'],
+        'register': ['enroll', 'registration', 'signup', 'apply', 'matriculate'],
+        'admission': ['application', 'apply', 'acceptance', 'enrollment', 'entry'],
+        'application': ['apply', 'admission', 'form', 'request', 'submission'],
+        'thesis': ['dissertation', 'project', 'research', 'paper', 'final project', 'capstone'],
+        'research': ['thesis', 'project', 'lab', 'academic', 'study', 'investigation'],
+        'study': ['library', 'quiet', 'space', 'room', 'liv', 'academic', 'learning', 'research'],
+        'graduation': ['degree', 'diploma', 'certificate', 'completion', 'finish'],
+        'degree': ['graduation', 'diploma', 'certificate', 'bachelor', 'master', 'phd'],
+        
+        # Roles
+        'student': ['undergraduate', 'graduate', 'bachelor', 'master', 'pupil', 'learner', 'scholar'],
+        'undergraduate': ['student', 'bachelor', 'undergrad', 'first degree'],
+        'graduate': ['student', 'master', 'postgraduate', 'grad student'],
+        'professor': ['prof', 'faculty', 'instructor', 'teacher', 'lecturer', 'academic'],
+        'lecturer': ['professor', 'instructor', 'teacher', 'faculty', 'academic'],
+        'employee': ['staff', 'worker', 'personnel', 'team member', 'colleague', 'work'],
+        'staff': ['employee', 'worker', 'personnel', 'team member', 'faculty'],
+        'researcher': ['scientist', 'investigator', 'post-doc', 'postdoc', 'doctoral', 'phd'],
+        'phd': ['doctoral', 'doctorate', 'researcher', 'graduate student', 'phd student'],
+        'postdoc': ['post-doc', 'postdoctoral', 'researcher', 'fellow'],
+        'visitor': ['guest', 'external', 'visiting', 'tour'],
+        'international': ['visa', 'foreign', 'exchange', 'global', 'overseas', 'abroad'],
+        
+        # Services and processes
+        'housing': ['accommodation', 'dormitory', 'apartment', 'room', 'rent', 'living', 'residence'],
+        'accommodation': ['housing', 'dormitory', 'apartment', 'room', 'residence', 'living'],
+        'sports': ['fitness', 'gym', 'recreation', 'exercise', 'activities', 'athletics'],
+        'fitness': ['sports', 'gym', 'exercise', 'workout', 'health', 'recreation'],
+        'health': ['medical', 'doctor', 'wellness', 'counseling', 'clinic', 'care'],
+        'counseling': ['advice', 'guidance', 'support', 'help', 'consultation'],
+        'career': ['job', 'internship', 'professional', 'employment', 'work', 'placement'],
+        'job': ['career', 'employment', 'work', 'position', 'internship'],
+        'internship': ['job', 'career', 'work experience', 'placement', 'training'],
+        'visa': ['permit', 'authorization', 'documentation', 'immigration', 'international'],
+        'permit': ['access', 'permission', 'authorization', 'card', 'pass', 'employee', 'visa'],
+        'form': ['forms', 'application', 'request', 'document', 'paperwork', 'submission'],
+        'document': ['form', 'paper', 'file', 'certificate', 'record', 'paperwork'],
+        'payment': ['fee', 'cost', 'price', 'charge', 'tuition'],
+        'fee': ['payment', 'cost', 'charge', 'tuition', 'expense'],
+        
+        # Transport and mobility
+        'transport': ['bus', 'train', 'parking', 'bike', 'mvv', 'mobility', 'travel', 'public transport'],
+        'parking': ['car', 'vehicle', 'permit', 'space', 'parkhaus', 'park', 'garage', 'lot', 'galileo'],
+        'galileo': ['parking', 'garage', 'garching', 'underground', 'park'],
+        'car': ['parking', 'vehicle', 'permit', 'space', 'parkhaus', 'park', 'garage', 'automobile'],
+        'bike': ['bicycle', 'cycling', 'bikebox', 'sharing', 'cycle'],
+        'bus': ['transport', 'public transport', 'mvv', 'transit'],
+        'train': ['transport', 'public transport', 'mvv', 's-bahn', 'u-bahn'],
+        'parkhaus': ['parking', 'car', 'vehicle', 'permit', 'garage', 'park'],
+        'park': ['parking', 'car', 'parkhaus', 'garage', 'lot', 'space'],
+        'garage': ['parking', 'parkhaus', 'car', 'park', 'lot'],
+        'lot': ['parking', 'park', 'garage', 'parkhaus', 'car', 'space'],
+        
+        # Social and community
+        'friends': ['buddy', 'program', 'social', 'meet', 'people', 'connect', 'networking', 'student council'],
+        'buddy': ['friends', 'program', 'social', 'meet', 'people', 'connect', 'networking', 'mentor'],
+        'social': ['friends', 'community', 'networking', 'events', 'activities', 'clubs'],
+        'club': ['organization', 'group', 'society', 'association', 'activity'],
+        'event': ['activity', 'program', 'workshop', 'conference', 'meeting'],
+        'language': ['german', 'english', 'course', 'learning', 'foreign language'],
+        'council': ['student council', 'representation', 'organization'],
+        'tired': ['sleep', 'rest', 'study', 'quiet', 'break', 'housing', 'accommodation'],
+        
+        # Business and administration
+        'business': ['card', 'contact', 'information', 'details', 'professional'],
+        'onboarding': ['new employee', 'setup', 'orientation', 'getting started', 'induction'],
+        'orientation': ['onboarding', 'introduction', 'getting started', 'welcome'],
+        'office': ['workplace', 'desk', 'room', 'workspace', 'building'],
+        'meeting': ['appointment', 'conference', 'discussion', 'session'],
+        'conference': ['meeting', 'seminar', 'workshop', 'event'],
+        
+        # Administration, employee specific
+        'forms': ['form', 'application', 'request', 'document', 'paperwork'],
+        'permits': ['access', 'permission', 'authorization', 'card', 'pass', 'employee'],
+        'vacation': ['leave', 'time off', 'holiday', 'absence', 'urlaubsantrag'],
+        'travel': ['business trip', 'trip', 'conference', 'expense', 'reimbursement', 'dienstreise', 'forms'],
+        'expense': ['reimbursement', 'cost', 'payment', 'travel', 'business', 'auszahlungsanordnung'],
+        'reimbursement': ['expense', 'refund', 'payment', 'claim', 'travel', 'auszahlungsanordnung'],
+        'trip': ['travel', 'business', 'conference', 'dienstreise', 'expense'],
+        'dienstreise': ['travel', 'business', 'trip', 'application', 'dienstreiseantrag'],
+        'dienstreiseantrag': ['travel', 'business', 'application', 'trip', 'authorization'],
+        'auszahlungsanordnung': ['expense', 'reimbursement', 'payment', 'form', 'claim'],
+        'ethics': ['committee', 'approval', 'research', 'proposal', 'ethik', 'ethik-pool', 'portal'],
+        'approval': ['permission', 'authorization', 'ethics', 'committee', 'forms', 'ethik-pool'],
+        'committee': ['ethics', 'ethik', 'approval', 'research', 'proposal', 'ethikkommission'],
+        'ethik': ['ethics', 'committee', 'approval', 'portal', 'pool'],
+        'portal': ['ethik-pool', 'mytum', 'online', 'system', 'access'],
+        
+        # Computing
+        'computing': ['hpc', 'high performance', 'cluster', 'supercomputer', 'resources', 'lrz'],
+        'hpc': ['high performance computing', 'cluster', 'supercomputer', 'computing', 'resources'],
+        'performance': ['computing', 'hpc', 'high', 'cluster', 'resources'],
+        'cluster': ['computing', 'hpc', 'supercomputer', 'performance', 'resources'],
+        'resources': ['computing', 'hpc', 'it', 'cluster', 'access'],
+        
+        # Food and dining keywords
+        'dietary': ['food', 'restriction', 'allergy', 'vegetarian', 'vegan', 'halal', 'mensa', 'dining'],
+        'restrictions': ['dietary', 'food', 'allergy', 'limitation', 'requirement', 'vegetarian', 'vegan'],
+        'dining': ['food', 'mensa', 'cafeteria', 'restaurant', 'eat', 'meal', 'dietary'],
+        'menu': ['food', 'dining', 'mensa', 'meal', 'dietary', 'options'],
+        'vegetarian': ['vegan', 'dietary', 'food', 'restrictions', 'mensa', 'dining'],
+        'vegan': ['vegetarian', 'dietary', 'food', 'restrictions', 'mensa', 'dining'],
+        'allergy': ['dietary', 'restrictions', 'food', 'allergen', 'intolerance'],
+        
+        # Campus-specific enhancements
+        'heilbronn': ['bildungscampus', 'chn', 'campuscard', 'mensa', 'dining'],
+        'bildungscampus': ['heilbronn', 'campuscard', 'mensa', 'dining', 'parking'],
+        
+        # WiFi setup keywords
+        'setup': ['eduroam', 'wifi', 'configuration', 'install', 'wizard', 'cat'],
+        'configuration': ['setup', 'eduroam', 'wifi', 'wizard', 'profile'],
+        'wizard': ['setup', 'eduroam', 'cat', 'configuration', 'tool'],
+        'cat': ['eduroam', 'wizard', 'configuration', 'tool', 'setup'],
+        'lrz': ['vpn', 'network', 'computing', 'leibniz', 'centre'],
+        
+        # Emergency and practical keywords
+        'emergency': ['help', 'urgent', 'problem', 'issue', 'security'],
+        'health': ['insurance', 'medical', 'doctor', 'healthcare'],
+        'banking': ['money', 'account', 'financial', 'atm'],
+        'shopping': ['store', 'service', 'grocery', 'restaurant']
+}
+
 # Terms that also score when they appear inside a longer string, so a query for
 # "LIV" still matches an entry about the "LIV library". A set, and module level,
 # because the scoring loop tests it once per knowledge base entry per query.
@@ -94,199 +285,12 @@ class TUMChatbotV2:
         query_words = set(re.findall(r'\w+', query_lower))
         
         # Query expansion table
-        keyword_expansions = {
-            # Campus and location
-            'library': ['lib', 'liv', 'books', 'study', 'reading', 'research', 'digital resources', 'bibliothek'],
-            'liv': ['library', 'lib', 'books', 'study', 'reading', 'research'],
-            'location': ['where', 'building', 'address', 'find', 'get to', 'go to', 'room', 'directions', 'navigate'],
-            'heilbronn': ['bildungscampus', 'campus', 'chn', 'student handbook', 'bildungscampus heilbronn'],
-            'munich': ['münchen', 'main campus', 'city campus', 'downtown', 'zentrum', 'munich campus'],
-            'garching': ['garching campus', 'research campus', 'forschungszentrum', 'garching-forschungszentrum'],
-            'weihenstephan': ['weihenstephan campus', 'freising', 'freising-weihenstephan', 'life sciences'],
-            'singapore': ['asia', 'international', 'tum asia', 'singapore campus'],
-            'building': ['edifice', 'structure', 'facility', 'complex', 'hall', 'tower', 'block'],
-            'room': ['office', 'classroom', 'lab', 'laboratory', 'space', 'venue', 'hall', 'auditorium'],
-            
-            # Dining and food
-            'lunch': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'restaurant', 'cafe'],
-            'dinner': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'restaurant', 'evening meal'],
-            'breakfast': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'meal', 'morning meal'],
-            'meal': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'food', 'lunch', 'dinner', 'breakfast'],
-            'mensa': ['cafeteria', 'canteen', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal', 'dining'],
-            'cafeteria': ['mensa', 'canteen', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal'],
-            'canteen': ['mensa', 'cafeteria', 'dining hall', 'restaurant', 'eat', 'food', 'lunch', 'meal'],
-            'restaurant': ['mensa', 'cafeteria', 'canteen', 'dining', 'food', 'eat', 'meal'],
-            'cafe': ['coffee', 'snack', 'beverage', 'drink', 'light meal', 'cafeteria'],
-            'dining': ['mensa', 'cafeteria', 'canteen', 'eat', 'food', 'lunch', 'meal', 'restaurant'],
-            'hungry': ['mensa', 'cafeteria', 'canteen', 'food', 'dining', 'eat', 'lunch', 'breakfast', 'dinner'],
-            'eat': ['mensa', 'cafeteria', 'canteen', 'food', 'dining', 'hungry', 'meal', 'lunch'],
-            'food': ['mensa', 'cafeteria', 'canteen', 'dining', 'eat', 'hungry', 'meal', 'vegetarian', 'vegan', 'dietary', 'allergy'],
-            'snack': ['food', 'eat', 'vending', 'quick', 'meal', 'light food', 'bite'],
-            'vegetarian': ['vegan', 'dietary', 'plant-based', 'meat-free', 'special diet'],
-            'vegan': ['vegetarian', 'dietary', 'plant-based', 'dairy-free', 'special diet'],
-            
-            # Technology and IT
-            'laptop': ['computer', 'equipment', 'borrow', 'device', 'hardware', 'notebook', 'pc'],
-            'computer': ['laptop', 'desktop', 'pc', 'workstation', 'device', 'hardware', 'machine'],
-            'print': ['printing', 'printer', 'copy', 'scan', 'document', 'paper', 'multifunction'],
-            'printing': ['print', 'printer', 'copy', 'scanner', 'document', 'paper', 'multifunction'],
-            'software': ['application', 'program', 'app', 'install', 'license', 'download', 'tool'],
-            'app': ['application', 'software', 'program', 'tool', 'mobile app'],
-            'install': ['installation', 'setup', 'configure', 'download', 'deploy'],
-            'support': ['help', 'assistance', 'troubleshoot', 'fix', 'problem', 'issue', 'help desk'],
-            'help': ['support', 'assistance', 'troubleshoot', 'fix', 'problem', 'issue', 'guidance'],
-            'login': ['log-in', 'sign-in', 'access', 'password', 'credentials', 'authentication', 'signin'],
-            'password': ['login', 'credentials', 'authentication', 'access', 'security', 'passphrase'],
-            'account': ['profile', 'user', 'credentials', 'login', 'access', 'registration'],
-            'card': ['tumcard', 'student card', 'id', 'access', 'campuscard', 'student id', 'identification'],
-            'tumcard': ['card', 'student card', 'id', 'access', 'identification', 'campus card'],
-            'email': ['mail', 'e-mail', 'setup', 'configuration', 'mytum', 'exchange', 'electronic mail'],
-            'mail': ['email', 'e-mail', 'electronic mail', 'messaging', 'correspondence'],
-            'wifi': ['eduroam', 'internet', 'network', 'connection', 'wireless', 'wlan', 'setup', 'cat', 'wizard'],
-            'eduroam': ['wifi', 'wireless', 'internet', 'network', 'wlan', 'connection'],
-            'internet': ['wifi', 'network', 'connection', 'online', 'web', 'connectivity'],
-            'network': ['wifi', 'internet', 'connection', 'eduroam', 'lan', 'connectivity'],
-            'tumonline': ['system', 'portal', 'online', 'registration', 'enrollment', 'student portal'],
-            'moodle': ['lms', 'learning', 'course', 'platform', 'learning management system'],
-            'vpn': ['remote access', 'secure connection', 'network', 'lrz', 'virtual private network'],
-            
-            # Academic
-            'course': ['class', 'lecture', 'seminar', 'tutorial', 'subject', 'module', 'program'],
-            'class': ['course', 'lecture', 'seminar', 'tutorial', 'lesson', 'session'],
-            'lecture': ['class', 'course', 'seminar', 'presentation', 'talk', 'session'],
-            'seminar': ['course', 'class', 'workshop', 'tutorial', 'discussion'],
-            'exam': ['test', 'assessment', 'quiz', 'evaluation', 'examination', 'final'],
-            'test': ['exam', 'assessment', 'quiz', 'evaluation', 'examination'],
-            'grade': ['mark', 'score', 'result', 'transcript', 'certificate', 'evaluation'],
-            'transcript': ['grade', 'record', 'certificate', 'academic record', 'marks'],
-            'enroll': ['register', 'matriculate', 'admission', 'application', 'apply', 'signup'],
-            'register': ['enroll', 'registration', 'signup', 'apply', 'matriculate'],
-            'admission': ['application', 'apply', 'acceptance', 'enrollment', 'entry'],
-            'application': ['apply', 'admission', 'form', 'request', 'submission'],
-            'thesis': ['dissertation', 'project', 'research', 'paper', 'final project', 'capstone'],
-            'research': ['thesis', 'project', 'lab', 'academic', 'study', 'investigation'],
-            'study': ['library', 'quiet', 'space', 'room', 'liv', 'academic', 'learning', 'research'],
-            'graduation': ['degree', 'diploma', 'certificate', 'completion', 'finish'],
-            'degree': ['graduation', 'diploma', 'certificate', 'bachelor', 'master', 'phd'],
-            
-            # Roles
-            'student': ['undergraduate', 'graduate', 'bachelor', 'master', 'pupil', 'learner', 'scholar'],
-            'undergraduate': ['student', 'bachelor', 'undergrad', 'first degree'],
-            'graduate': ['student', 'master', 'postgraduate', 'grad student'],
-            'professor': ['prof', 'faculty', 'instructor', 'teacher', 'lecturer', 'academic'],
-            'lecturer': ['professor', 'instructor', 'teacher', 'faculty', 'academic'],
-            'employee': ['staff', 'worker', 'personnel', 'team member', 'colleague', 'work'],
-            'staff': ['employee', 'worker', 'personnel', 'team member', 'faculty'],
-            'researcher': ['scientist', 'investigator', 'post-doc', 'postdoc', 'doctoral', 'phd'],
-            'phd': ['doctoral', 'doctorate', 'researcher', 'graduate student', 'phd student'],
-            'postdoc': ['post-doc', 'postdoctoral', 'researcher', 'fellow'],
-            'visitor': ['guest', 'external', 'visiting', 'tour'],
-            'international': ['visa', 'foreign', 'exchange', 'global', 'overseas', 'abroad'],
-            
-            # Services and processes
-            'housing': ['accommodation', 'dormitory', 'apartment', 'room', 'rent', 'living', 'residence'],
-            'accommodation': ['housing', 'dormitory', 'apartment', 'room', 'residence', 'living'],
-            'sports': ['fitness', 'gym', 'recreation', 'exercise', 'activities', 'athletics'],
-            'fitness': ['sports', 'gym', 'exercise', 'workout', 'health', 'recreation'],
-            'health': ['medical', 'doctor', 'wellness', 'counseling', 'clinic', 'care'],
-            'counseling': ['advice', 'guidance', 'support', 'help', 'consultation'],
-            'career': ['job', 'internship', 'professional', 'employment', 'work', 'placement'],
-            'job': ['career', 'employment', 'work', 'position', 'internship'],
-            'internship': ['job', 'career', 'work experience', 'placement', 'training'],
-            'visa': ['permit', 'authorization', 'documentation', 'immigration', 'international'],
-            'permit': ['access', 'permission', 'authorization', 'card', 'pass', 'employee', 'visa'],
-            'form': ['forms', 'application', 'request', 'document', 'paperwork', 'submission'],
-            'document': ['form', 'paper', 'file', 'certificate', 'record', 'paperwork'],
-            'payment': ['fee', 'cost', 'price', 'charge', 'tuition'],
-            'fee': ['payment', 'cost', 'charge', 'tuition', 'expense'],
-            
-            # Transport and mobility
-            'transport': ['bus', 'train', 'parking', 'bike', 'mvv', 'mobility', 'travel', 'public transport'],
-            'parking': ['car', 'vehicle', 'permit', 'space', 'parkhaus', 'park', 'garage', 'lot', 'galileo'],
-            'galileo': ['parking', 'garage', 'garching', 'underground', 'park'],
-            'car': ['parking', 'vehicle', 'permit', 'space', 'parkhaus', 'park', 'garage', 'automobile'],
-            'bike': ['bicycle', 'cycling', 'bikebox', 'sharing', 'cycle'],
-            'bus': ['transport', 'public transport', 'mvv', 'transit'],
-            'train': ['transport', 'public transport', 'mvv', 's-bahn', 'u-bahn'],
-            'parkhaus': ['parking', 'car', 'vehicle', 'permit', 'garage', 'park'],
-            'park': ['parking', 'car', 'parkhaus', 'garage', 'lot', 'space'],
-            'garage': ['parking', 'parkhaus', 'car', 'park', 'lot'],
-            'lot': ['parking', 'park', 'garage', 'parkhaus', 'car', 'space'],
-            
-            # Social and community
-            'friends': ['buddy', 'program', 'social', 'meet', 'people', 'connect', 'networking', 'student council'],
-            'buddy': ['friends', 'program', 'social', 'meet', 'people', 'connect', 'networking', 'mentor'],
-            'social': ['friends', 'community', 'networking', 'events', 'activities', 'clubs'],
-            'club': ['organization', 'group', 'society', 'association', 'activity'],
-            'event': ['activity', 'program', 'workshop', 'conference', 'meeting'],
-            'language': ['german', 'english', 'course', 'learning', 'foreign language'],
-            'council': ['student council', 'representation', 'organization'],
-            'tired': ['sleep', 'rest', 'study', 'quiet', 'break', 'housing', 'accommodation'],
-            
-            # Business and administration
-            'business': ['card', 'contact', 'information', 'details', 'professional'],
-            'onboarding': ['new employee', 'setup', 'orientation', 'getting started', 'induction'],
-            'orientation': ['onboarding', 'introduction', 'getting started', 'welcome'],
-            'office': ['workplace', 'desk', 'room', 'workspace', 'building'],
-            'meeting': ['appointment', 'conference', 'discussion', 'session'],
-            'conference': ['meeting', 'seminar', 'workshop', 'event'],
-            
-            # Administration, employee specific
-            'forms': ['form', 'application', 'request', 'document', 'paperwork'],
-            'permits': ['access', 'permission', 'authorization', 'card', 'pass', 'employee'],
-            'vacation': ['leave', 'time off', 'holiday', 'absence', 'urlaubsantrag'],
-            'travel': ['business trip', 'trip', 'conference', 'expense', 'reimbursement', 'dienstreise', 'forms'],
-            'expense': ['reimbursement', 'cost', 'payment', 'travel', 'business', 'auszahlungsanordnung'],
-            'reimbursement': ['expense', 'refund', 'payment', 'claim', 'travel', 'auszahlungsanordnung'],
-            'trip': ['travel', 'business', 'conference', 'dienstreise', 'expense'],
-            'dienstreise': ['travel', 'business', 'trip', 'application', 'dienstreiseantrag'],
-            'dienstreiseantrag': ['travel', 'business', 'application', 'trip', 'authorization'],
-            'auszahlungsanordnung': ['expense', 'reimbursement', 'payment', 'form', 'claim'],
-            'ethics': ['committee', 'approval', 'research', 'proposal', 'ethik', 'ethik-pool', 'portal'],
-            'approval': ['permission', 'authorization', 'ethics', 'committee', 'forms', 'ethik-pool'],
-            'committee': ['ethics', 'ethik', 'approval', 'research', 'proposal', 'ethikkommission'],
-            'ethik': ['ethics', 'committee', 'approval', 'portal', 'pool'],
-            'portal': ['ethik-pool', 'mytum', 'online', 'system', 'access'],
-            
-            # Computing
-            'computing': ['hpc', 'high performance', 'cluster', 'supercomputer', 'resources', 'lrz'],
-            'hpc': ['high performance computing', 'cluster', 'supercomputer', 'computing', 'resources'],
-            'performance': ['computing', 'hpc', 'high', 'cluster', 'resources'],
-            'cluster': ['computing', 'hpc', 'supercomputer', 'performance', 'resources'],
-            'resources': ['computing', 'hpc', 'it', 'cluster', 'access'],
-            
-            # Food and dining keywords
-            'dietary': ['food', 'restriction', 'allergy', 'vegetarian', 'vegan', 'halal', 'mensa', 'dining'],
-            'restrictions': ['dietary', 'food', 'allergy', 'limitation', 'requirement', 'vegetarian', 'vegan'],
-            'dining': ['food', 'mensa', 'cafeteria', 'restaurant', 'eat', 'meal', 'dietary'],
-            'menu': ['food', 'dining', 'mensa', 'meal', 'dietary', 'options'],
-            'vegetarian': ['vegan', 'dietary', 'food', 'restrictions', 'mensa', 'dining'],
-            'vegan': ['vegetarian', 'dietary', 'food', 'restrictions', 'mensa', 'dining'],
-            'allergy': ['dietary', 'restrictions', 'food', 'allergen', 'intolerance'],
-            
-            # Campus-specific enhancements
-            'heilbronn': ['bildungscampus', 'chn', 'campuscard', 'mensa', 'dining'],
-            'bildungscampus': ['heilbronn', 'campuscard', 'mensa', 'dining', 'parking'],
-            
-            # WiFi setup keywords
-            'setup': ['eduroam', 'wifi', 'configuration', 'install', 'wizard', 'cat'],
-            'configuration': ['setup', 'eduroam', 'wifi', 'wizard', 'profile'],
-            'wizard': ['setup', 'eduroam', 'cat', 'configuration', 'tool'],
-            'cat': ['eduroam', 'wizard', 'configuration', 'tool', 'setup'],
-            'lrz': ['vpn', 'network', 'computing', 'leibniz', 'centre'],
-            
-            # Emergency and practical keywords
-            'emergency': ['help', 'urgent', 'problem', 'issue', 'security'],
-            'health': ['insurance', 'medical', 'doctor', 'healthcare'],
-            'banking': ['money', 'account', 'financial', 'atm'],
-            'shopping': ['store', 'service', 'grocery', 'restaurant']
-        }
         
         # Expand query words with related terms
         expanded_words = set(query_words)
         for word in query_words:
-            if word in keyword_expansions:
-                expanded_words.update(keyword_expansions[word])
+            if word in KEYWORD_EXPANSIONS:
+                expanded_words.update(KEYWORD_EXPANSIONS[word])
 
         scored_docs = []
         for doc in self.knowledge_base:
@@ -742,7 +746,8 @@ Answer only: YES or NO"""
         session['conversation_history'].append(f"User: {query}")
 
         # Keep only last N exchanges for context
-        if len(session['conversation_history']) > 12:  # 6 exchanges = 12 entries
+        # Trimmed here, before the answer is appended, so the list settles at 13.
+        if len(session['conversation_history']) > 12:
             session['conversation_history'] = session['conversation_history'][-12:]
 
         # Use optimized search for better results with user context for better matching
