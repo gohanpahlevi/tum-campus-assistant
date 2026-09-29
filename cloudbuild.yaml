@@ -1,4 +1,4 @@
-# The image is built here rather than locally, for two reasons.
+# The image is built here and not locally, for two reasons.
 #
 #   1. The build machine is an arm64 Mac. A local docker build produces an arm64
 #      image and Cloud Run only runs amd64, so the service fails to start.

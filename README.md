@@ -2,7 +2,7 @@
 
 A question answering service for TUM students and staff, running on Google Cloud Run at https://tum-chatbot-920516460156.europe-west3.run.app
 
-Built for a Generative AI course at TUM School of Management by a team of six. I worked on the backend and took the project from a course prototype to a running service. That meant the production architecture, the container build, the Cloud Run deployment, and a Firestore-backed security layer to replace state that did not survive an instance restart.
+Built for a Generative AI course at TUM School of Management by a team of six. I worked on the backend and took the project from a course prototype to a running service. That meant the production architecture, the container build, the Cloud Run deployment, and moving the security blacklist out of memory and into Firestore.
 
 The team's submission repository is at https://github.com/miglios2912/Group-19---Gen-AI. This repository is the version that runs in production.
 
@@ -24,7 +24,7 @@ Keyword matching works here because every entry is written and tagged by hand, s
 
 ## Security
 
-User input is checked for prompt injection before it reaches the knowledge base. Repeat offenders are blacklisted by IP, and the blacklist lives in Firestore rather than in the container, because Cloud Run instances are replaced and anything held in memory is lost.
+User input is checked for prompt injection before it reaches the knowledge base. Repeat offenders are blacklisted by IP, and the blacklist lives in Firestore, not in the container, because Cloud Run replaces instances and anything held in memory is lost with them.
 
 ## Layout
 
