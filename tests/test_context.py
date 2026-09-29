@@ -6,12 +6,8 @@ paths are not covered here.
 """
 
 import logging
-import sys
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from chatbot_v2 import TUMChatbotV2
 
