@@ -22,6 +22,21 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+# Terms that also score when they appear inside a longer string, so a query for
+# "LIV" still matches an entry about the "LIV library". A set, and module level,
+# because the scoring loop tests it once per knowledge base entry per query.
+CRITICAL_KEYWORDS = frozenset([
+    'liv', 'library', 'mensa', 'cafeteria', 'wifi', 'eduroam', 'parking',
+    'parkhaus', 'park', 'garage', 'vacation', 'ethics', 'permits',
+    'reimbursement', 'travel', 'expense', 'forms', 'galileo', 'hpc',
+    'computing', 'dietary', 'restrictions', 'approval', 'committee', 'portal',
+    'dienstreise', 'dienstreiseantrag', 'auszahlungsanordnung', 'heilbronn',
+    'bildungscampus', 'campuscard', 'setup', 'configuration', 'wizard', 'cat',
+    'vegetarian', 'vegan', 'allergy', 'ethik', 'ethikkommission', 'cluster',
+    'resources', 'lrz',
+])
+
+
 class TUMChatbotV2:
     
     def __init__(self):
@@ -70,10 +85,10 @@ class TUMChatbotV2:
             raise
     
     def optimized_search(self, query: str, top_k: int = 5, user_context: Dict = None) -> List[Dict]:
-        """
-        - Focused keyword expansion
-        - Enhanced scoring for critical keywords
-        - Single, efficient search method
+        """Keyword search with query expansion.
+
+        One scoring pass over every entry. Fields are weighted, and terms in
+        CRITICAL_KEYWORDS also match as substrings so "LIV" finds "LIV library".
         """
         query_lower = query.lower()
         query_words = set(re.findall(r'\w+', query_lower))
@@ -292,15 +307,9 @@ class TUMChatbotV2:
             score = matches
             
             # Keyword substring matching
-            critical_keywords = ['liv', 'library', 'mensa', 'cafeteria', 'wifi', 'eduroam', 'parking', 'parkhaus', 'park', 'garage',
-                                'vacation', 'ethics', 'permits', 'reimbursement', 'travel', 'expense', 'forms', 'galileo', 
-                                'hpc', 'computing', 'dietary', 'restrictions', 'approval', 'committee', 'portal',
-                                'dienstreise', 'dienstreiseantrag', 'auszahlungsanordnung', 'heilbronn', 'bildungscampus',
-                                'campuscard', 'setup', 'configuration', 'wizard', 'cat', 'vegetarian', 'vegan', 'allergy',
-                                'ethik', 'ethikkommission', 'cluster', 'resources', 'lrz']
-            for keyword in query_words:
-                if keyword in critical_keywords and keyword in searchable_text:
-                    score += 3  # High boost for critical keyword substring matches
+            for keyword in query_words & CRITICAL_KEYWORDS:
+                if keyword in searchable_text:
+                    score += 3
             
             # Boost for exact phrase matches
             if any(phrase in searchable_text for phrase in [query_lower, ' '.join(query_words)]):
@@ -334,7 +343,7 @@ class TUMChatbotV2:
             if campus_mentioned and campus_mentioned in searchable_text:
                 score += 2
                     
-            # Enhanced Role-specific boost
+            # Role-specific boost
             # Student role detection
             student_keywords = ['student', 'studying', 'international', 'visa', 'foreign', 'bachelor', 'master', 'semester']
             if any(word in query_lower for word in student_keywords):

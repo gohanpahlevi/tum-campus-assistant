@@ -27,9 +27,6 @@ const parseMarkdown = (text) => {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
   (window.location.hostname === 'localhost' ? "http://localhost:8083" : "");
 
-console.log("API_BASE_URL:", API_BASE_URL);
-console.log("VITE_API_BASE_URL:", import.meta.env.VITE_API_BASE_URL);
-
 export default function ChatWindow() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -126,21 +123,19 @@ export default function ChatWindow() {
           ...prev,
           {
             role: "bot",
-            text: `I apologize, but I encountered an error: ${
-              errorData.error || "Unknown error"
-            }. Please try again or contact support if the problem persists.`,
+            text: `Something went wrong: ${
+              errorData.error || "unknown error"
+            }. Please try again.`,
           },
         ]);
       }
     } catch (error) {
       console.error("Error sending message:", error);
-      console.error("Error details:", error.message);
-      console.error("Full error:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
       setMessages((prev) => [
         ...prev,
         {
           role: "bot",
-          text: `Connection error: ${error.message}. API URL: ${API_BASE_URL}/api/v2/chat`,
+          text: "Could not reach the server. Please try again.",
         },
       ]);
     } finally {

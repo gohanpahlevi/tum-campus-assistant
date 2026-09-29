@@ -75,12 +75,12 @@ The API key comes from Secret Manager, so it is never in the image, in the deplo
 ## Tests
 
 ```
-pip install pytest
+pip install -r requirements-dev.txt
 pytest
 ```
 
 15 tests over the context rules and the retrieval scoring. They run without a network call. The paths that ask the model for a judgement are not covered, and one test pins the boundary where the rules hand over to it.
 
-## Not in this repository
+## TUM's material
 
-The knowledge base content is TUM's. The campus maps and logo are TUM's. They are here because the application does not run without them, not as something I am licensing on.
+The knowledge base content, the campus maps and the logo are TUM's. They are in this repository because the application does not run without them, not as something I am licensing on.
