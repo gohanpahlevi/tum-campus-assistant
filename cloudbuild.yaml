@@ -1,0 +1,38 @@
+# The image is built here rather than locally, for two reasons.
+#
+#   1. The build machine is an arm64 Mac. A local docker build produces an arm64
+#      image and Cloud Run only runs amd64, so the service fails to start.
+#      Cloud Build workers are amd64, which also avoids the QEMU emulation that
+#      makes npm ci and pip install many times slower.
+#   2. Container Registry has been retired, so the image goes to Artifact
+#      Registry.
+#
+# Run with:
+#   gcloud builds submit --config cloudbuild.yaml --project <PROJECT_ID>
+
+substitutions:
+  _REGION: europe-west3
+  _REPO: tum-chatbot
+  _IMAGE: tum-chatbot
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file=Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$BUILD_ID
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+
+options:
+  # The frontend npm build is the slow step. A bigger machine keeps the whole
+  # build inside a few minutes.
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

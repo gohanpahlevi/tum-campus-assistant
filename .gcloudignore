@@ -1,0 +1,27 @@
+# What gets uploaded to Cloud Build.
+
+# Secrets must never reach the build context. The Dockerfile copies backend/
+# wholesale, so an .env in there would be baked into a public image. Runtime
+# config comes from --set-env-vars and Secret Manager instead.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Rebuilt inside the image by pip and npm ci.
+**/venv/
+**/node_modules/
+**/__pycache__/
+*.pyc
+**/dist/
+**/build/
+
+.git/
+.gitignore
+tests/
+docs/
+README.md
+**/logs/
+*.log
+.DS_Store
+**/.DS_Store
