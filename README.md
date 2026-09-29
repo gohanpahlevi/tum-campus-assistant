@@ -2,9 +2,9 @@
 
 A question answering service for TUM students and staff, running on Google Cloud Run at https://tum-chatbot-920516460156.europe-west3.run.app
 
-Built by a team of six for a Generative AI course at TUM School of Management. The application is the team's work. I did the deployment, the container build and the Cloud Run setup.
+Built for a Generative AI course at TUM School of Management by a team of six. I worked on the backend and took the project from a course prototype to a running service. That meant the production architecture, the container build, the Cloud Run deployment, and a Firestore-backed security layer to replace state that did not survive an instance restart.
 
-The team's original repository is at https://github.com/miglios2912/Group-19---Gen-AI. This repository is the version that is deployed, with the container build and the Cloud Run setup added.
+The team's submission repository is at https://github.com/miglios2912/Group-19---Gen-AI. This repository is the version that runs in production.
 
 ## What it does
 
